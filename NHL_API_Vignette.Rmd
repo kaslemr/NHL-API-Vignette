@@ -2,21 +2,138 @@
 title: "Guide for Using the NHL API"
 author: "Matt Kasle"
 date: "9/16/2020"
-output: rmarkdown::github_document
+output: 
+  rmarkdown::github_document:
+    toc: yes
+    toc_float: yes
+    toc_depth: 1
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(jsonlite)
+library(httr)
 ```
 
-## R Markdown
+# Required Packages
+This vignette requires the Tidyverse, httr, and jsonlite packages.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+– You should have functions to return parsed data for each of the following endpoints from the records API (where possible, the user should have the option to specify the franchise of choice by both name and number):
+∗ /franchise (Returns id, firstSeasonId and lastSeasonId and name of every team in the history of the NHL)
+∗ /franchise-team-totals (Returns Total stats for every franchise (ex roadTies, roadWins, etc))
+∗ /site/api/franchise-season-records?cayenneExp=franchiseId=ID (Drill-down into season records for a specific franchise)
+∗ /franchise-goalie-records?cayenneExp=franchiseId=ID (Goalie records for the specified franchise)
+∗ /franchise-skater-records?cayenneExp=franchiseId=ID (Skater records, same interaction as goalie endpoint)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r}
+# Functions for Records API
 
-```{r cars}
-summary(cars)
+getAllFranchises <- function(){
+  return(fromJSON(content(GET("https://records.nhl.com/site/api/franchise"), "text"), flatten=TRUE))
+}
+
+getTeamStatTotals <- function(){
+  return(fromJSON(content(GET("https://records.nhl.com/site/api/franchise-team-totals"), "text"), flatten=TRUE))
+}
+
+getSingleSeasonRecords <- function(ID){
+  return(fromJSON(content(GET(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=", ID)), "text"), flatten=TRUE))
+}
+
+getGoalieRecords <- function(ID){
+  return(fromJSON(content(GET(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=", ID)), "text"), flatten=TRUE))
+}
+
+getSkaterRecords <- function(ID){
+  return(fromJSON(content(GET(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=", ID)), "text"), flatten=TRUE))
+}
+```
+
+
+```{r}
+# Function for Stats API
+
+getStats <- function(modifier,
+                       teamIds=NULL,
+                       season=NULL
+                       ){
+  url <- "https://statsapi.web.nhl.com/api/v1/teams"
+  if(missing(modifier)){
+    if(missing(teamIds)){
+      return(fromJSON(content(GET(url), "text"), flatten=TRUE))
+    } else{
+      if (length(teamIds) == 1){
+        url <- paste0(url, "/", teamIds[1]) 
+        return(fromJSON(content(GET(url), "text"), flatten=TRUE)) 
+      } else {
+        url <- paste0(url, "?teamId=")
+        counter = 0
+        for (Id in teamIds){
+          if (counter == 0){
+            url <- paste0(url, Id)
+        } 
+          else{
+            url <- paste0(url, ",", Id)
+            }
+          counter <- counter + 1
+        }
+      }
+    }
+    return(fromJSON(content(GET(url), "text"), flatten=TRUE))
+  }
+  if(modifier %in% c("team.roster", "person.names", "team.schedule.next",
+                   "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
+    url <- paste0(url, "?expand=", modifier)
+    if(length(season) > 0){
+      url <- paste0(url, "&season=", season)
+    }
+    return(return(fromJSON(content(GET(url), "text"), flatten=TRUE)))
+  }
+  else{
+    return("Invalid modifier provided.")
+  }
+}
+
+# ?expand=team.roster Shows roster of active players for the specified team
+# ?expand=person.names Same as above, but gives less info.
+# ?expand=team.schedule.next Returns details of the upcoming game for a team
+# ?expand=team.schedule.previous Same as above but for the last game played
+# ?expand=team.stats Returns the teams stats for the season
+# ?expand=team.roster&season=20142015 Adding the season identifier shows the roster for that season
+# ?teamId=4,5,29 Can string team id together to get multiple teams
+# ?stats=statsSingleSeasonPlayoffs Specify which stats to get. Not fully sure all of the values
+
+getStats("statsSingleSeasonPlayoffs")
+```
+
+```{r}
+# wrapper function
+getNHLData <- function(endpoint, teamId=NULL, season=NULL){
+  if(endpoint == "franchise"){
+    return(getAllFranchises())
+  }
+  if(endpoint == "franchise-team-totals"){
+    return(getTeamStatTotals())
+  }
+  if(endpoint == "franchise-season-records"){
+    # need to pass team Id
+    return(getSingleSeasonRecords(teamId[1]))
+  }
+  if(endpoint == "franchise-goalie-records"){
+    # need to pass team Id
+    return(getGoalieRecords(teamId[1]))
+  }
+  if(endpoint == "franchise-skater-records"){
+    # need to pass team Id
+    return(getSkaterRecords(teamId[1]))
+  }
+  if(endpoint %in% c("team.roster", "person.names", "team.schedule.next",
+                   "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
+    return(getStats(endpoint, teamId, season))
+  }
+}
+
 ```
 
 ## Including Plots
