@@ -11,9 +11,9 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
 library(jsonlite)
 library(httr)
+library(tidyverse)
 ```
 
 # Required Packages
@@ -29,24 +29,41 @@ This vignette requires the Tidyverse, httr, and jsonlite packages.
 ```{r}
 # Functions for Records API
 
-getAllFranchises <- function(){
-  return(fromJSON(content(GET("https://records.nhl.com/site/api/franchise"), "text"), flatten=TRUE))
+tblFromAPI <- function(url, teamId = NULL){
+  return(fromJSON(content(GET(url), "text"), flatten=TRUE)$data)
 }
 
-getTeamStatTotals <- function(){
-  return(fromJSON(content(GET("https://records.nhl.com/site/api/franchise-team-totals"), "text"), flatten=TRUE))
+tblNHl <- function(url, team = NULL){
+  if(length(team) > 0){
+    if(!is.character(team)){
+      return(tblFromAPI(paste0(url, "?cayenneExp=id=", team)))
+    }
+    else{
+      teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
+      return(tblFromAPI(paste0(url, "?cayenneExp=id=", teamId[[1]])))
+    }
+  }
+  return(tblFromAPI(url))
 }
 
-getSingleSeasonRecords <- function(ID){
-  return(fromJSON(content(GET(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=", ID)), "text"), flatten=TRUE))
+getFranchises <- function(team = NULL){
+  return(tblNHl("https://records.nhl.com/site/api/franchise", teamId))
 }
 
-getGoalieRecords <- function(ID){
-  return(fromJSON(content(GET(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=", ID)), "text"), flatten=TRUE))
+getTeamStatTotals <- function(team = NULL){
+  return(tblFromAPI("https://records.nhl.com/site/api/franchise-team-totals", teamId))
 }
 
-getSkaterRecords <- function(ID){
-  return(fromJSON(content(GET(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=", ID)), "text"), flatten=TRUE))
+getSingleSeasonRecords <- function(teamId){
+  return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=",teamId)))
+}
+
+getGoalieRecords <- function(teamId){
+  return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=", teamId)))
+}
+
+getSkaterRecords <- function(teamId){
+  return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=", teamId)))
 }
 ```
 
@@ -61,11 +78,11 @@ getStats <- function(modifier,
   url <- "https://statsapi.web.nhl.com/api/v1/teams"
   if(missing(modifier)){
     if(missing(teamIds)){
-      return(fromJSON(content(GET(url), "text"), flatten=TRUE))
+      return(tblFromAPI(url))
     } else{
       if (length(teamIds) == 1){
         url <- paste0(url, "/", teamIds[1]) 
-        return(fromJSON(content(GET(url), "text"), flatten=TRUE)) 
+        return(tblFromAPI(url))
       } else {
         url <- paste0(url, "?teamId=")
         counter = 0
@@ -80,7 +97,7 @@ getStats <- function(modifier,
         }
       }
     }
-    return(fromJSON(content(GET(url), "text"), flatten=TRUE))
+    return(tblFromAPI(url))
   }
   if(modifier %in% c("team.roster", "person.names", "team.schedule.next",
                    "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
@@ -88,7 +105,7 @@ getStats <- function(modifier,
     if(length(season) > 0){
       url <- paste0(url, "&season=", season)
     }
-    return(return(fromJSON(content(GET(url), "text"), flatten=TRUE)))
+    return(tblFromAPI(url))
   }
   else{
     return("Invalid modifier provided.")
@@ -104,7 +121,11 @@ getStats <- function(modifier,
 # ?teamId=4,5,29 Can string team id together to get multiple teams
 # ?stats=statsSingleSeasonPlayoffs Specify which stats to get. Not fully sure all of the values
 
-getStats("statsSingleSeasonPlayoffs")
+data <- getAllFranchises()
+data
+data %>% filter(data$id == 3)
+
+getStats("team.roster")
 ```
 
 ```{r}
