@@ -22,116 +22,80 @@ This vignette requires the Tidyverse, httr, and jsonlite packages.
 ```{r}
 # Functions for Records API
 
-tblFromAPI <- function(url, teamId = NULL){
+recordsAPIHelper <- function(url){
   return(fromJSON(content(GET(url), "text"), flatten=TRUE)$data)
 }
 
-tblNHl <- function(url, team = NULL){
+statsAPIHelper <- function(url, modifier){
+  if(modifier == "team.roster"){
+    data <- fromJSON(content(GET(url), "text"), flatten=TRUE)$teams
+    for (i in 1:nrow(data)){
+      if(i == 1){
+        rosterData <- data[i, "roster.roster"]
+      }
+      else{
+        rosterData <- bind_rows(rosterData, data[i, "roster.roster"])
+      }
+    }
+    return(rosterData)
+  }
+  return(fromJSON(content(GET(url), "text"), flatten=TRUE)$teams)
+}
+
+getRecordsTbl <- function(url, team = NULL){
   if(length(team) > 0){
     if(!is.character(team)){
-      return(tblFromAPI(paste0(url, "?cayenneExp=id=", team)))
+      return(tblFromAPI(paste0(url, "?cayenneExp=franchiseId=", team)))
     }
     else{
       teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
-      return(tblFromAPI(paste0(url, "?cayenneExp=id=", teamId[[1]])))
+      return(tblFromAPI(paste0(url, "?cayenneExp=franchiseId=", teamId[[1]])))
     }
   }
   return(tblFromAPI(url))
 }
 
-getFranchises <- function(team = NULL){
-  return(tblNHl("https://records.nhl.com/site/api/franchise", team))
-}
-
-getTeamStatTotals <- function(team = NULL){
-  return(tblFromAPI("https://records.nhl.com/site/api/franchise-team-totals", team))
-}
-
-getSingleSeasonRecords <- function(team = NULL){
-  if(length(team) == 0){
-    return(tblFromAPI("https://records.nhl.com/site/api/franchise-season-records"))
-  }
-  else if (!is.character(team)){
-    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=",team)))
-  }
-  else{
-    teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
-    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=",teamId[1])))
-  }
-}
-
-getGoalieRecords <- function(team = NULL){
-  if(length(team) == 0){
-    return(tblFromAPI("https://records.nhl.com/site/api/franchise-goalie-records"))
-  }
-  else if (!is.character(team)){
-    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=",team)))
-  }
-  else{
-    teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
-    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=",teamId[1])))
-  }
-}
-
-getSkaterRecords <- function(team = NULL){
-  if(length(team) == 0){
-    return(tblFromAPI("https://records.nhl.com/site/api/franchise-skater-records"))
-  }
-  else if (!is.character(team)){
-    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=",team)))
-  }
-  else{
-    teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
-    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=",teamId[1])))
-  }
-}
-```
-
-
-```{r}
-# Function for Stats API
-
-getStats <- function(modifier,
-                       teamIds=NULL,
-                       season=NULL
-                       ){
+getStatsTbl <- function(modifier = NULL, team = NULL, season = NULL){
   url <- "https://statsapi.web.nhl.com/api/v1/teams"
-  if(missing(modifier)){
-    if(missing(teamIds)){
-      return(tblFromAPI(url))
-    } else{
-      if (length(teamIds) == 1){
-        url <- paste0(url, "/", teamIds[1]) 
-        return(tblFromAPI(url))
-      } else {
-        url <- paste0(url, "?teamId=")
-        counter = 0
-        for (Id in teamIds){
-          if (counter == 0){
-            url <- paste0(url, Id)
-        } 
-          else{
-            url <- paste0(url, ",", Id)
-            }
-          counter <- counter + 1
-        }
-      }
+  if(length(team) > 0){
+    if(!is.character(team)){
+      url <- paste0(url, "/", team)
     }
-    return(tblFromAPI(url))
+    else{
+      teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
+      url <- paste0(url, "/", teamId)
+    }
   }
-  if(modifier %in% c("team.roster", "person.names", "team.schedule.next",
-                   "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
+  if(length(modifier) > 0){
     url <- paste0(url, "?expand=", modifier)
     if(length(season) > 0){
       url <- paste0(url, "&season=", season)
     }
-    return(tblFromAPI(url))
   }
-  else{
-    return("Invalid modifier provided.")
-  }
+  return(statsAPIHelper(url, modifier))
+}
+
+getFranchises <- function(team = NULL){
+  return(getRecordsTbl("https://records.nhl.com/site/api/franchise", team))
+}
+
+getTeamStatTotals <- function(team = NULL){
+  return(getRecordsTbl("https://records.nhl.com/site/api/franchise-team-totals", team))
+}
+
+getSingleSeasonRecords <- function(team = NULL){
+    return(getRecordsTbl("https://records.nhl.com/site/api/franchise-season-records", team))
+}
+
+getGoalieRecords <- function(team = NULL){
+  return(getRecordsTbl("https://records.nhl.com/site/api/franchise-goalie-records", team))
+}
+
+getSkaterRecords <- function(team = NULL){
+  return(getRecordsTbl("https://records.nhl.com/site/api/franchise-skater-records", team))
 }
 ```
+
 
 ```{r}
 # wrapper function
@@ -156,13 +120,13 @@ getNHLData <- function(endpoint, team=NULL, season=NULL){
   }
   if(endpoint %in% c("team.roster", "person.names", "team.schedule.next",
                    "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
-    return(getStats(endpoint, team, season))
+    return(getStatsTbl(modifier = endpoint, team = team, season = season))
   }
 }
 
 ```
 Possible endpoints:
-franchise
+franchises
 franchise-team-totals
 franchise-season-records
 franchise-goalie-records
@@ -175,6 +139,7 @@ team.stats
 statsSingleSeasonPlayoffs
 
 
+
 # Data Exploration
 
 To explore the NHL API, I'm going to explore the long franchise history of the Boston Bruins, and compare them to one of their archrivals and fellow Original Six team, the Montreal Canadians.
@@ -182,12 +147,49 @@ To explore the NHL API, I'm going to explore the long franchise history of the B
 When was the first Bruins season?
 ```{r, message=FALSE}
 getNHLData("franchises", team="Bruins")$firstSeasonId
+
+
+fromJSON(content(GET("https://statsapi.web.nhl.com/api/v1/teams/12?stats=statsSingleSeasonPlayoffs"), "text"), flatten=TRUE)$teams
+
+statsAPIHelper("")
 ```
 First year was 1924.
 
 Let's look at the Bruins' win percentage every year. For this purpose, we will exclude ties. We'll also graph the average 
 
 ```{r}
-getNHLData("franchise-goalie-records",6)
+franchises
+franchise-team-totals
+franchise-season-records
+franchise-goalie-records
+franchise-skater-records
+team.roster
+person.names
+team.schedule.next
+team.schedule.previous
+team.stats
+
+getNHLData("team.roster")
+x$roster.roster
+getNHLData("team.roster", "Bruins")
+
+getNHLData("person.names")
+getNHLData("person.names", "Bruins")
+
+getNHLData("team.schedule.next", 6)
+getNHLData("team.schedule.next", "Bruins")
+
+getNHLData("team.schedule.previous", 6)
+getNHLData("team.schedule.previous", "Bruins")
+
+getNHLData("team.stats", 6)
+getNHLData("team.stats", "Bruins")
+
+getNHLData("team.schedule.previous", 6)
+getNHLData("team.schedule.previous", "Bruins")
+
+getNHLData("statsSingleSeasonPlayoffs", 6)
+getNHLData("statsSingleSeasonPlayoffs", "Bruins")
+
 ```
 
