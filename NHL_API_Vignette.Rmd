@@ -19,13 +19,6 @@ library(tidyverse)
 # Required Packages
 This vignette requires the Tidyverse, httr, and jsonlite packages.
 
-– You should have functions to return parsed data for each of the following endpoints from the records API (where possible, the user should have the option to specify the franchise of choice by both name and number):
-∗ /franchise (Returns id, firstSeasonId and lastSeasonId and name of every team in the history of the NHL)
-∗ /franchise-team-totals (Returns Total stats for every franchise (ex roadTies, roadWins, etc))
-∗ /site/api/franchise-season-records?cayenneExp=franchiseId=ID (Drill-down into season records for a specific franchise)
-∗ /franchise-goalie-records?cayenneExp=franchiseId=ID (Goalie records for the specified franchise)
-∗ /franchise-skater-records?cayenneExp=franchiseId=ID (Skater records, same interaction as goalie endpoint)
-
 ```{r}
 # Functions for Records API
 
@@ -47,23 +40,50 @@ tblNHl <- function(url, team = NULL){
 }
 
 getFranchises <- function(team = NULL){
-  return(tblNHl("https://records.nhl.com/site/api/franchise", teamId))
+  return(tblNHl("https://records.nhl.com/site/api/franchise", team))
 }
 
 getTeamStatTotals <- function(team = NULL){
-  return(tblFromAPI("https://records.nhl.com/site/api/franchise-team-totals", teamId))
+  return(tblFromAPI("https://records.nhl.com/site/api/franchise-team-totals", team))
 }
 
-getSingleSeasonRecords <- function(teamId){
-  return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=",teamId)))
+getSingleSeasonRecords <- function(team = NULL){
+  if(length(team) == 0){
+    return(tblFromAPI("https://records.nhl.com/site/api/franchise-season-records"))
+  }
+  else if (!is.character(team)){
+    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=",team)))
+  }
+  else{
+    teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
+    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=",teamId[1])))
+  }
 }
 
-getGoalieRecords <- function(teamId){
-  return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=", teamId)))
+getGoalieRecords <- function(team = NULL){
+  if(length(team) == 0){
+    return(tblFromAPI("https://records.nhl.com/site/api/franchise-goalie-records"))
+  }
+  else if (!is.character(team)){
+    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=",team)))
+  }
+  else{
+    teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
+    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=",teamId[1])))
+  }
 }
 
-getSkaterRecords <- function(teamId){
-  return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=", teamId)))
+getSkaterRecords <- function(team = NULL){
+  if(length(team) == 0){
+    return(tblFromAPI("https://records.nhl.com/site/api/franchise-skater-records"))
+  }
+  else if (!is.character(team)){
+    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=",team)))
+  }
+  else{
+    teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
+    return(tblFromAPI(paste0("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=",teamId[1])))
+  }
 }
 ```
 
@@ -111,58 +131,63 @@ getStats <- function(modifier,
     return("Invalid modifier provided.")
   }
 }
-
-# ?expand=team.roster Shows roster of active players for the specified team
-# ?expand=person.names Same as above, but gives less info.
-# ?expand=team.schedule.next Returns details of the upcoming game for a team
-# ?expand=team.schedule.previous Same as above but for the last game played
-# ?expand=team.stats Returns the teams stats for the season
-# ?expand=team.roster&season=20142015 Adding the season identifier shows the roster for that season
-# ?teamId=4,5,29 Can string team id together to get multiple teams
-# ?stats=statsSingleSeasonPlayoffs Specify which stats to get. Not fully sure all of the values
-
-data <- getAllFranchises()
-data
-data %>% filter(data$id == 3)
-
-getStats("team.roster")
 ```
 
 ```{r}
 # wrapper function
-getNHLData <- function(endpoint, teamId=NULL, season=NULL){
-  if(endpoint == "franchise"){
-    return(getAllFranchises())
+getNHLData <- function(endpoint, team=NULL, season=NULL){
+  if(endpoint == "franchises"){
+    return(getFranchises(team))
   }
   if(endpoint == "franchise-team-totals"){
-    return(getTeamStatTotals())
+    return(getTeamStatTotals(team))
   }
   if(endpoint == "franchise-season-records"){
     # need to pass team Id
-    return(getSingleSeasonRecords(teamId[1]))
+    return(getSingleSeasonRecords(team))
   }
   if(endpoint == "franchise-goalie-records"){
     # need to pass team Id
-    return(getGoalieRecords(teamId[1]))
+    return(getGoalieRecords(team))
   }
   if(endpoint == "franchise-skater-records"){
     # need to pass team Id
-    return(getSkaterRecords(teamId[1]))
+    return(getSkaterRecords(team))
   }
   if(endpoint %in% c("team.roster", "person.names", "team.schedule.next",
                    "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
-    return(getStats(endpoint, teamId, season))
+    return(getStats(endpoint, team, season))
   }
 }
 
 ```
+Possible endpoints:
+franchise
+franchise-team-totals
+franchise-season-records
+franchise-goalie-records
+franchise-skater-records
+team.roster
+person.names
+team.schedule.next
+team.schedule.previous
+team.stats
+statsSingleSeasonPlayoffs
 
-## Including Plots
 
-You can also embed plots, for example:
+# Data Exploration
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+To explore the NHL API, I'm going to explore the long franchise history of the Boston Bruins, and compare them to one of their archrivals and fellow Original Six team, the Montreal Canadians.
+
+When was the first Bruins season?
+```{r, message=FALSE}
+getNHLData("franchises", team="Bruins")$firstSeasonId
+```
+First year was 1924.
+
+Let's look at the Bruins' win percentage every year. For this purpose, we will exclude ties. We'll also graph the average 
+
+```{r}
+getNHLData("franchise-goalie-records",6)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
