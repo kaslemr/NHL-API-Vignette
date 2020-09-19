@@ -2,10 +2,10 @@
 title: "Guide for Using the NHL API"
 author: "Matt Kasle"
 date: "9/16/2020"
-output: 
-  rmarkdown::github_document:
-    toc: yes
-
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
 ---
 
 ```{r setup, include=FALSE}
@@ -18,13 +18,27 @@ library(tidyverse)
 ## Required Packages
 This vignette requires the Tidyverse, httr, and jsonlite packages.
 
-## API Helper Functions
+## API Helper Function
 The NHL provides APIs to access an array of team and player statistics. This vignette provides functions to help users access this data and return well-formatted dataframes for various endpoints. The code below creates a wrapper function for "one-stop-shop" access to a number of endpoints in these APIs.
-```{r}
+```{r, include = FALSE}
 # Functions for Records API
 
+# helper functions to return tibbles from API calls to both NHL APIs
 recordsAPIHelper <- function(url){
   return(fromJSON(content(GET(url), "text"), flatten=TRUE)$data)
+}
+
+getRecordsTbl <- function(url, team = NULL){
+  if(length(team) > 0){
+    if(!is.character(team)){
+      return(recordsAPIHelper(paste0(url, "?cayenneExp=franchiseId=", team)))
+    }
+    else{
+      teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
+      return(recordsAPIHelper(paste0(url, "?cayenneExp=franchiseId=", teamId[[1]])))
+    }
+  }
+  return(recordsAPIHelper(url))
 }
 
 statsAPIHelper <- function(url, modifier){
@@ -43,18 +57,12 @@ statsAPIHelper <- function(url, modifier){
   return(fromJSON(content(GET(url), "text"), flatten=TRUE)$teams)
 }
 
-getRecordsTbl <- function(url, team = NULL){
-  if(length(team) > 0){
-    if(!is.character(team)){
-      return(recordsAPIHelper(paste0(url, "?cayenneExp=franchiseId=", team)))
-    }
-    else{
-      teamId <- getFranchises() %>% filter(teamCommonName == team) %>% select(id)
-      return(recordsAPIHelper(paste0(url, "?cayenneExp=franchiseId=", teamId[[1]])))
-    }
-  }
-  return(recordsAPIHelper(url))
-}
+
+```
+
+```{r, include=FALSE}
+
+# These functions allow you to use either the Stats API or each endpoint in the Records API separately.
 
 getStatsTbl <- function(modifier = NULL, team = NULL, season = NULL){
   url <- "https://statsapi.web.nhl.com/api/v1/teams"
@@ -95,8 +103,12 @@ getGoalieRecords <- function(team = NULL){
 getSkaterRecords <- function(team = NULL){
   return(getRecordsTbl("https://records.nhl.com/site/api/franchise-skater-records", team))
 }
+```
 
-# wrapper function
+
+```{r, include = FALSE}
+
+# This is the wrapper function to query either API
 getNHLData <- function(endpoint, team=NULL, season=NULL){
   if(endpoint == "franchises"){
     return(getFranchises(team))
@@ -123,12 +135,13 @@ getNHLData <- function(endpoint, team=NULL, season=NULL){
 }
 ```
 
-The end result of this code is the function `getNHLData()`, which takes an available NHL API endpoint, and optionally a team and season, and returns a filtered dataset. You can provide either the team id or the team name.
+You can query either API using the function `getNHLData()`, which takes an available NHL API endpoint, and optionally a team and season, and returns a filtered dataset. You can provide either the team id or the team name.
 
 The available endpoints that a user can provide are:
 <br>
 
 Records API:
+
 * franchises  
 * franchise-team-totals  
 * franchise-season-records  
@@ -136,6 +149,7 @@ Records API:
 * franchise-skater-records  
 
 Stats API:
+
 * teams  
 * team.roster  
 * person.names  
@@ -145,10 +159,10 @@ Stats API:
 * statsSingleSeasonPlayoffs  
 
 Examples:
-```{r}
-head(getNHLData("franchises"))
-head(getNHLData("franchise-team-totals", 6))
-getNHLData("team.roster", "Bruins")
+```{r, message=FALSE}
+knitr::kable(head(getNHLData("franchises")))
+knitr::kable(head(getNHLData("franchise-team-totals", 6)))
+knitr::kable(getNHLData("team.roster", "Bruins"))
 ```
 
 
@@ -157,13 +171,13 @@ getNHLData("team.roster", "Bruins")
 We'll explore this data set in a few different ways. Through this process, I'll demonstrate how to use this set of functions.
 
 First, we'll read in franchise team totals, filtered to only regular season games and active franchises
-```{r}
+```{r, message=FALSE}
 # regular season totals for active teams
 regularSeasonTotals <- getNHLData("franchise-team-totals") %>% filter(gameTypeId == 2)  %>%  filter(activeFranchise == 1) 
 ```
 
 Next, we'll create some new variables. We'll create win percentage, goal differential, and home/road win percentage:
-```{r}
+```{r, message=FALSE}
 regularSeasonTotals$WinPrct <- regularSeasonTotals$wins / (regularSeasonTotals$wins + regularSeasonTotals$losses)
 
 regularSeasonTotals$goaldiff <- regularSeasonTotals$goalsFor - regularSeasonTotals$goalsAgainst
@@ -174,7 +188,7 @@ regularSeasonTotals$roadWinPrct <- regularSeasonTotals$roadWins / (regularSeason
 ```
 
 Next, we'll get team data from the Stats API, which has more details about each franchise like division, conference, and time zone, and join that to the previous data set.
-```{r}
+```{r, message=FALSE}
 # only for active teams
 activeTeams <- getNHLData("teams")
 
@@ -183,7 +197,7 @@ activeTeamStats <- dplyr::inner_join(regularSeasonTotals, activeTeams, by = c("f
 ```
 
 Now, we can plot the all-time win percentage for each team in the league:
-```{r}
+```{r, message=FALSE}
 g <- ggplot(data = activeTeamStats, aes(reorder(teamName.x, WinPrct), WinPrct))
 g + geom_bar(stat="Identity") + 
   labs(x = "") +
@@ -194,14 +208,14 @@ g + geom_bar(stat="Identity") +
 
 We can also see where teams are located geographically.
 12 of the 14 Eastern Conference teams are on the East Coast. By comparison, Western Conference teams are spread out geographically, with teams in central, mountain, pacific, and vancouver time zones.
-```{r}
+```{r, message=FALSE}
 knitr::kable(table(activeTeamStats$venue.timeZone.id, activeTeamStats$conference.name),
              caption="Team Time Zones by Conference")
 ```
 
 
 There are four divisions. The Metropolitan division has team closest together by time zone, as all ten teams are on the east coast.
-```{r}
+```{r, message=FALSE}
 knitr::kable(table(activeTeamStats$venue.timeZone.id, activeTeamStats$division.name),
              caption="Team Time Zones by Conference")
 
@@ -209,7 +223,7 @@ knitr::kable(table(activeTeamStats$venue.timeZone.id, activeTeamStats$division.n
 
 
 Now, let's view all-time win percentages of teams by division:
-```{r}
+```{r, message=FALSE}
 g <- ggplot(data = activeTeamStats, aes(reorder(teamName.x, WinPrct), WinPrct))
 g + geom_bar(stat="Identity", aes(fill=division.name)) + 
   labs(x = "") +
@@ -219,7 +233,7 @@ g + geom_bar(stat="Identity", aes(fill=division.name)) +
 ```
 
 Now let's explore the team history of a single team. Being from Boston, I will choose my hometown Bruins. We see below that Rask played the most games as the Bruins goalie, but Thompson had by far the most shutouts despite playing about 50 fewer games.
-```{r}
+```{r, message=FALSE}
 bruinsGoalies <- getNHLData("franchise-goalie-records", team = "Bruins")
 
 
@@ -231,7 +245,7 @@ g + geom_point() +
 ```
 
 There aren't many major outliers for wins compared to total games played for Bruins goalies, though Johnston seems to have a much lower win percentage than other goalies. Thompson does not seem to have a much higher win percentage than other goalies, despite the fact that he had the most shutouts. 
-```{r}
+```{r, message=FALSE}
 g <- ggplot(bruinsGoalies, aes(x = gamesPlayed, y = wins))
 g + geom_point() +
     geom_text(aes(label=lastName),hjust=0.5, vjust=1.2) +
@@ -240,7 +254,7 @@ g + geom_point() +
 ```
 
 Let's compare historical goalie performance between the Bruins and their rivals, the Canadiens.
-```{r}
+```{r, message=FALSE}
 canadiansGoalies <- getNHLData("franchise-goalie-records", team = "Canadiens")
 canadianAndBruinGoalies <- dplyr::bind_rows(bruinsGoalies, canadiansGoalies)
 
@@ -252,7 +266,7 @@ g + geom_boxplot() +
 ```
 
 Here is a look at the distribution of the chart above. They look fairly similar.
-```{r}
+```{r, message=FALSE}
 g <- ggplot(canadianAndBruinGoalies, aes(x = shutouts))
 g + geom_histogram(aes(y = ..density..), bins=20) +
     facet_wrap(~ franchiseName) +
@@ -261,7 +275,7 @@ g + geom_histogram(aes(y = ..density..), bins=20) +
 ```
 
 Now, we'll compare the same distribution with a much newer franchise, the Tampa Bay Lightning. We see that the Lightning have no goalies with more than 25 career shutouts, while the Bruins have multiple goalies with that distinction.
-```{r}
+```{r, message=FALSE}
 lightningGoalies <- getNHLData("franchise-goalie-records", team = "Lightning")
 lightningAndBruinGoalies <- dplyr::bind_rows(bruinsGoalies, lightningGoalies)
 
@@ -275,18 +289,18 @@ g + geom_histogram(aes(y = ..density..), bins=20) +
 We can also look at the performance of teams by their goal differential (how many more or less goals they've scored compared to their opponent).
 
 We look at that by division:
-```{r}
-activeTeamStats %>% group_by(division.name) %>% summarise("Avg. Goal Differetial Per Season" = mean(goaldiff,na.rm=TRUE))
+```{r, message=FALSE}
+knitr::kable(activeTeamStats %>% group_by(division.name) %>% summarise("Avg. Goal Differetial Per Season" = mean(goaldiff,na.rm=TRUE)))
 ```
 
 We can see by team the most goals that they have allowed. 
-```{r}
+```{r, message=FALSE}
 allGoalies <- getNHLData("franchise-goalie-records")
-allGoalies %>% group_by(franchiseName) %>% summarise("Most Goals Allowed in a Game" = max(mostGoalsAgainstOneGame))
+knitr::kable(allGoalies %>% group_by(franchiseName) %>% summarise("Most Goals Allowed in a Game" = max(mostGoalsAgainstOneGame)))
 ```
 
 Finally, we'll summerize home and road performance
-```{r}
+```{r, message=FALSE}
 # function creates a summary table subsetted on an iris specialties provided by the user
 createSummaryTable <- function(division, columns){
   
@@ -314,9 +328,10 @@ createSummaryTable <- function(division, columns){
   return(division_summary)
 }
 
-for (division in c("Atlantic", "Central", "Metropolitan", "Pacific")){
-  print(createSummaryTable(division, c("roadWins", "roadLosses", "roadOvertimeLosses")))
-  print(createSummaryTable(division, c("homeWins", "homeLosses", "homeOvertimeLosses")))
-}
+createSummaryTable("Atlantic", c("roadWins", "roadLosses", "roadOvertimeLosses"))
+createSummaryTable("Pacific", c("roadWins", "roadLosses", "roadOvertimeLosses"))
+createSummaryTable("Metropolitan", c("roadWins", "roadLosses", "roadOvertimeLosses"))
 ```
+
+
 
