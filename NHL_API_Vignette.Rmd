@@ -118,7 +118,7 @@ getNHLData <- function(endpoint, team=NULL, season=NULL){
     # need to pass team Id
     return(getSkaterRecords(team))
   }
-  if(endpoint %in% c("team.roster", "person.names", "team.schedule.next",
+  if(endpoint %in% c("teams","team.roster", "person.names", "team.schedule.next",
                    "team.schedule.previous","team.stats", "statsSingleSeasonPlayoffs")){
     return(getStatsTbl(modifier = endpoint, team = team, season = season))
   }
@@ -146,50 +146,159 @@ To explore the NHL API, I'm going to explore the long franchise history of the B
 
 When was the first Bruins season?
 ```{r, message=FALSE}
-getNHLData("franchises", team="Bruins")$firstSeasonId
+getNHLData("team.stats", "Bruins")
 
 
 fromJSON(content(GET("https://statsapi.web.nhl.com/api/v1/teams/12?stats=statsSingleSeasonPlayoffs"), "text"), flatten=TRUE)$teams
 
-statsAPIHelper("")
 ```
 First year was 1924.
 
 Let's look at the Bruins' win percentage every year. For this purpose, we will exclude ties. We'll also graph the average 
+```{r}
+print("franchise-team-totals")
+colnames(getNHLData("franchise-team-totals"))
+print("franchises")
+colnames(getNHLData("franchises"))
+print("franchise-team-totals")
+colnames(getNHLData("franchise-team-totals"))
+print("franchise-season-records")
+colnames(getNHLData("franchise-season-records"))
+print("franchise-goalie-records")
+colnames(getNHLData("franchise-goalie-records"))
+print("franchise-skater-records")
+colnames(getNHLData("franchise-skater-records"))
+print("team.roster")
+colnames(getNHLData("team.roster"))
+print("person.names")
+colnames(getNHLData("person.names"))
+print("team.schedule.next")
+colnames(getNHLData("team.schedule.next"))
+print("team.schedule.previous")
+colnames(getNHLData("team.schedule.previous"))
+print("team.stats")
+colnames(getNHLData("team.stats"))
+print("statsSingleSeasonPlayoffs")
+colnames(getNHLData("statsSingleSeasonPlayoffs"))
+```
 
 ```{r}
-franchises
-franchise-team-totals
-franchise-season-records
-franchise-goalie-records
-franchise-skater-records
-team.roster
-person.names
-team.schedule.next
-team.schedule.previous
-team.stats
+# all franchises
+allFranchises <- getNHLData("franchises")
 
-getNHLData("team.roster")
-x$roster.roster
-getNHLData("team.roster", "Bruins")
+# regular season totals for active teams
+regularSeasonTotals <- getNHLData("franchise-team-totals") %>% filter(gameTypeId == 2)  %>%  filter(activeFranchise == 1) 
 
-getNHLData("person.names")
-getNHLData("person.names", "Bruins")
+regularSeasonTotals$WinPrct <- regularSeasonTotals$wins / (regularSeasonTotals$wins + regularSeasonTotals$losses)
 
-getNHLData("team.schedule.next", 6)
-getNHLData("team.schedule.next", "Bruins")
+regularSeasonTotals$goaldiff <- regularSeasonTotals$goalsFor - regularSeasonTotals$goalsAgainst
 
-getNHLData("team.schedule.previous", 6)
-getNHLData("team.schedule.previous", "Bruins")
+regularSeasonTotals$homeWinPrct <- regularSeasonTotals$homeWins / (regularSeasonTotals$homeWins + regularSeasonTotals$homeLosses)
 
-getNHLData("team.stats", 6)
-getNHLData("team.stats", "Bruins")
+regularSeasonTotals$roadWinPrct <- regularSeasonTotals$roadWins / (regularSeasonTotals$roadWins + regularSeasonTotals$roadLosses)
+  
 
-getNHLData("team.schedule.previous", 6)
-getNHLData("team.schedule.previous", "Bruins")
+regularSeasonTotals
 
-getNHLData("statsSingleSeasonPlayoffs", 6)
-getNHLData("statsSingleSeasonPlayoffs", "Bruins")
+dplyr::inner_join(regularSeasonTotals, allFranchises, by = c("franchiseId" = "mostRecentTeamId"))
+
+# get divisions for teams
+regularSeasonTotals
+
+# only for active teams
+activeTeams <- getNHLData("teams")
+activeTeams
+
+
+# gets division name, venue, other interesting information
+activeTeamStats <- dplyr::inner_join(regularSeasonTotals, activeTeams, by = c("franchiseId" = "id")) 
+
+g <- ggplot(data = activeTeamStats, aes(reorder(teamName.x, WinPrct), WinPrct))
+g + geom_bar(stat="Identity") + 
+  labs(x = "") +
+  coord_flip() + 
+  labs(x = "Win Percentage") +
+  ggtitle("Overall Team Win Percentages")
+
 
 ```
 
+12 of the 14 Eastern Conference teams are on the East Coast. By comparison, Western Conference teams are spread out geographically, with teams in central, mountain, pacific, and vancouver time zones.
+```{r}
+knitr::kable(table(activeTeamStats$venue.timeZone.id, activeTeamStats$conference.name),
+             caption="Team Time Zones by Conference")
+```
+
+```{r}
+knitr::kable(table(activeTeamStats$venue.timeZone.id, activeTeamStats$division.name),
+             caption="Team Time Zones by Conference")
+
+```
+
+There are four divisions. The Metropolitan division has team closest together by time zone, as all ten teams are on the east coast.
+
+Now, let's view all-time win percentages of teams by division:
+
+```{r}
+g <- ggplot(data = activeTeamStats, aes(reorder(teamName.x, WinPrct), WinPrct))
+g + geom_bar(stat="Identity", aes(fill=division.name)) + 
+  labs(x = "") +
+  coord_flip() + 
+  labs(x = "Win Percentage", fill="Division") +
+  ggtitle("Overall Team Win Percentages, including division")
+```
+
+Now let's explore the team history of a single team. Being from Boston, I will choose my hometown Bruins. We see below that Rask played the most games as the Bruins goalie, but Thompson had by far the most shutouts despite playing about 50 fewer games.
+```{r}
+bruinsGoalies <- getNHLData("franchise-goalie-records", team = "Bruins")
+
+
+g <- ggplot(bruinsGoalies, aes(x = gamesPlayed, y = shutouts))
+g + geom_point() +
+    labs(x = "Games Played", fill="Shutouts") +
+    geom_text(aes(label=lastName),hjust=0.5, vjust=1.2) +
+    ggtitle("Games Played vs Shutouts for Bruins Goalies")
+```
+
+There aren't many major outliers for wins compared to total games played for Bruins goalies, though Johnston seems to have a much lower win percentage than other goalies. Thompson does not seem to have a much higher win percentage than other goalies, despite the fact that he had the most shutouts. 
+```{r}
+g <- ggplot(bruinsGoalies, aes(x = gamesPlayed, y = wins))
+g + geom_point() +
+    geom_text(aes(label=lastName),hjust=0.5, vjust=1.2) +
+    labs(x = "Games Played", y="Wins") +
+    ggtitle("Games Played vs Wins for Bruins Goalies")
+```
+
+Let's compare historical goalie performance between the Bruins and their rivals, the Canadiens.
+
+```{r}
+canadiansGoalies <- getNHLData("franchise-goalie-records", team = "Canadiens")
+canadianAndBruinGoalies <- dplyr::bind_rows(bruinsGoalies, canadiansGoalies)
+
+g <- ggplot(canadianAndBruinGoalies, aes(x = franchiseName, y = shutouts))
+g + geom_boxplot() +
+    geom_jitter(mapping = aes(color = franchiseName)) + 
+    labs(x = "Franchise", color = "Franchise", y = "Shutouts") +
+    ggtitle("Shutouts by Goalie")
+```
+
+
+```{r}
+g <- ggplot(canadianAndBruinGoalies, aes(x = shutouts))
+g + geom_histogram(aes(y = ..density..), bins=20) +
+    facet_wrap(~ franchiseName) +
+    labs(x = "Shutouts", y = "Density") +
+    ggtitle("Distribution of Career Shutouts by Franchise Goalies, Bruins vs Canadians")
+```
+
+Now, we'll compare the same distribution with a much newer franchise, the Tampa Bay Lightning. We see that the Lightning have no goalies with more than 25 career shutouts, while the Bruins have multiple goalies with that distinction.
+```{r}
+lightningGoalies <- getNHLData("franchise-goalie-records", team = "Lightning")
+lightningAndBruinGoalies <- dplyr::bind_rows(bruinsGoalies, lightningGoalies)
+
+g <- ggplot(lightningAndBruinGoalies, aes(x = shutouts))
+g + geom_histogram(aes(y = ..density..), bins=20) +
+    facet_wrap(~ franchiseName) +
+    labs(x = "Shutouts", y = "Density") +
+    ggtitle("Distribution of Career Shutouts by Franchise Goalies, Bruins vs Canadians")
+```
